@@ -11,6 +11,33 @@ class CUDASetup(object):
     def __init__(self):
         raise RuntimeError("Call get_instance() instead")
 
+    @property
+    @classmethod
+    def lib(cls):
+        if cls._instance is not None:
+            return cls._instance.lib
+
+        return cls.get_instance().lib
+        """
+        lib = cls.get_instance().lib
+        try:
+            if lib is None and torch.cuda.is_available():
+                CUDASetup.get_instance().generate_instructions()
+                CUDASetup.get_instance().print_log_stack()
+                raise RuntimeError('''
+                CUDA Setup failed despite GPU being available. Inspect the CUDA SETUP outputs aboveto fix your environment!
+                If you cannot find any issues and suspect a bug, please open an issue with detals about your environment:
+                https://github.com/TimDettmers/bitsandbytes/issues''')
+            lib.cadam32bit_g32
+            lib.get_context.restype = ct.c_void_p
+            lib.get_cusparse.restype = ct.c_void_p
+            COMPILED_WITH_CUDA = True
+        except AttributeError:
+            warn("The installed version of bitsandbytes was compiled without GPU support. "
+                "8-bit optimizers and GPU quantization are unavailable.")
+            COMPILED_WITH_CUDA = False
+        """
+
     def generate_instructions(self):
         if self.cuda is None:
             self.add_log_entry('CUDA SETUP: Problem: The main issue seems to be that the main CUDA library was not detected.')
@@ -110,20 +137,4 @@ class CUDASetup(object):
         return cls._instance
 
 
-lib = CUDASetup.get_instance().lib
-try:
-    if lib is None and torch.cuda.is_available():
-        CUDASetup.get_instance().generate_instructions()
-        CUDASetup.get_instance().print_log_stack()
-        raise RuntimeError('''
-        CUDA Setup failed despite GPU being available. Inspect the CUDA SETUP outputs aboveto fix your environment!
-        If you cannot find any issues and suspect a bug, please open an issue with detals about your environment:
-        https://github.com/TimDettmers/bitsandbytes/issues''')
-    lib.cadam32bit_g32
-    lib.get_context.restype = ct.c_void_p
-    lib.get_cusparse.restype = ct.c_void_p
-    COMPILED_WITH_CUDA = True
-except AttributeError:
-    warn("The installed version of bitsandbytes was compiled without GPU support. "
-        "8-bit optimizers and GPU quantization are unavailable.")
-    COMPILED_WITH_CUDA = False
+lib = CUDASetup.lib

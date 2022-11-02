@@ -10,7 +10,7 @@ import torch
 from typing import Tuple
 from torch import Tensor
 
-from .cextension import COMPILED_WITH_CUDA, lib
+from .cextension import lib
 from functools import reduce  # Required in Python 3
 
 # math.prod not compatible with python < 3.8
@@ -19,67 +19,66 @@ def prod(iterable):
 
 name2qmap = {}
 
-if COMPILED_WITH_CUDA:
-    """C FUNCTIONS FOR OPTIMIZERS"""
-    str2optimizer32bit = {}
-    str2optimizer32bit["adam"] = (lib.cadam32bit_g32, lib.cadam32bit_g16)
-    str2optimizer32bit["momentum"] = (
-        lib.cmomentum32bit_g32,
-        lib.cmomentum32bit_g16,
-    )
-    str2optimizer32bit["rmsprop"] = (
-        lib.crmsprop32bit_g32,
-        lib.crmsprop32bit_g16,
-    )
-    str2optimizer32bit["adagrad"] = (
-        lib.cadagrad32bit_g32,
-        lib.cadagrad32bit_g16,
-    )
-    str2optimizer32bit["lars"] = (
-        lib.cmomentum32bit_g32,
-        lib.cmomentum32bit_g16,
-    )
-    str2optimizer32bit["lamb"] = (lib.cadam32bit_g32, lib.cadam32bit_g16)
+"""C FUNCTIONS FOR OPTIMIZERS"""
+str2optimizer32bit = {}
+str2optimizer32bit["adam"] = lambda: (lib.cadam32bit_g32, lib.cadam32bit_g16)
+str2optimizer32bit["momentum"] = lambda: (
+    lib.cmomentum32bit_g32,
+    lib.cmomentum32bit_g16,
+)
+str2optimizer32bit["rmsprop"] = lambda: (
+    lib.crmsprop32bit_g32,
+    lib.crmsprop32bit_g16,
+)
+str2optimizer32bit["adagrad"] = lambda: (
+    lib.cadagrad32bit_g32,
+    lib.cadagrad32bit_g16,
+)
+str2optimizer32bit["lars"] = lambda: (
+    lib.cmomentum32bit_g32,
+    lib.cmomentum32bit_g16,
+)
+str2optimizer32bit["lamb"] = lambda: (lib.cadam32bit_g32, lib.cadam32bit_g16)
 
-    str2optimizer8bit = {}
-    str2optimizer8bit["adam"] = (
-        lib.cadam_static_8bit_g32,
-        lib.cadam_static_8bit_g16,
-    )
-    str2optimizer8bit["momentum"] = (
-        lib.cmomentum_static_8bit_g32,
-        lib.cmomentum_static_8bit_g16,
-    )
-    str2optimizer8bit["rmsprop"] = (
-        lib.crmsprop_static_8bit_g32,
-        lib.crmsprop_static_8bit_g16,
-    )
-    str2optimizer8bit["lamb"] = (
-        lib.cadam_static_8bit_g32,
-        lib.cadam_static_8bit_g16,
-    )
-    str2optimizer8bit["lars"] = (
-        lib.cmomentum_static_8bit_g32,
-        lib.cmomentum_static_8bit_g16,
-    )
+str2optimizer8bit = {}
+str2optimizer8bit["adam"] = lambda: (
+    lib.cadam_static_8bit_g32,
+    lib.cadam_static_8bit_g16,
+)
+str2optimizer8bit["momentum"] = lambda: (
+    lib.cmomentum_static_8bit_g32,
+    lib.cmomentum_static_8bit_g16,
+)
+str2optimizer8bit["rmsprop"] = lambda: (
+    lib.crmsprop_static_8bit_g32,
+    lib.crmsprop_static_8bit_g16,
+)
+str2optimizer8bit["lamb"] = lambda: (
+    lib.cadam_static_8bit_g32,
+    lib.cadam_static_8bit_g16,
+)
+str2optimizer8bit["lars"] = lambda: (
+    lib.cmomentum_static_8bit_g32,
+    lib.cmomentum_static_8bit_g16,
+)
 
-    str2optimizer8bit_blockwise = {}
-    str2optimizer8bit_blockwise["adam"] = (
-        lib.cadam_8bit_blockwise_fp32,
-        lib.cadam_8bit_blockwise_fp16,
-    )
-    str2optimizer8bit_blockwise["momentum"] = (
-        lib.cmomentum_8bit_blockwise_fp32,
-        lib.cmomentum_8bit_blockwise_fp16,
-    )
-    str2optimizer8bit_blockwise["rmsprop"] = (
-        lib.crmsprop_8bit_blockwise_fp32,
-        lib.crmsprop_8bit_blockwise_fp16,
-    )
-    str2optimizer8bit_blockwise["adagrad"] = (
-        lib.cadagrad_8bit_blockwise_fp32,
-        lib.cadagrad_8bit_blockwise_fp16,
-    )
+str2optimizer8bit_blockwise = {}
+str2optimizer8bit_blockwise["adam"] = lambda: (
+    lib.cadam_8bit_blockwise_fp32,
+    lib.cadam_8bit_blockwise_fp16,
+)
+str2optimizer8bit_blockwise["momentum"] = lambda: (
+    lib.cmomentum_8bit_blockwise_fp32,
+    lib.cmomentum_8bit_blockwise_fp16,
+)
+str2optimizer8bit_blockwise["rmsprop"] = lambda: (
+    lib.crmsprop_8bit_blockwise_fp32,
+    lib.crmsprop_8bit_blockwise_fp16,
+)
+str2optimizer8bit_blockwise["adagrad"] = lambda: (
+    lib.cadagrad_8bit_blockwise_fp32,
+    lib.cadagrad_8bit_blockwise_fp16,
+)
 
 
 class CUBLAS_Context(object):
@@ -661,7 +660,7 @@ def optimizer_update_32bit(
         )
 
     if g.dtype == torch.float32 and state1.dtype == torch.float32:
-        str2optimizer32bit[optimizer_name][0](
+        str2optimizer32bit[optimizer_name]()[0](
             get_ptr(g),
             get_ptr(p),
             get_ptr(state1),
@@ -680,7 +679,7 @@ def optimizer_update_32bit(
             ct.c_int32(g.numel()),
         )
     elif g.dtype == torch.float16 and state1.dtype == torch.float32:
-        str2optimizer32bit[optimizer_name][1](
+        str2optimizer32bit[optimizer_name]()[1](
             get_ptr(g),
             get_ptr(p),
             get_ptr(state1),
@@ -781,7 +780,7 @@ def optimizer_update_8bit(
         param_norm = torch.norm(p.data.float())
 
     if g.dtype == torch.float32 and state1.dtype == torch.uint8:
-        str2optimizer8bit[optimizer_name][0](
+        str2optimizer8bit[optimizer_name]()[0](
             get_ptr(p),
             get_ptr(g),
             get_ptr(state1),
@@ -805,7 +804,7 @@ def optimizer_update_8bit(
             ct.c_int32(g.numel()),
         )
     elif g.dtype == torch.float16 and state1.dtype == torch.uint8:
-        str2optimizer8bit[optimizer_name][1](
+        str2optimizer8bit[optimizer_name]()[1](
             get_ptr(p),
             get_ptr(g),
             get_ptr(state1),
@@ -855,7 +854,7 @@ def optimizer_update_8bit_blockwise(
 ) -> None:
 
     if g.dtype == torch.float32 and state1.dtype == torch.uint8:
-        str2optimizer8bit_blockwise[optimizer_name][0](
+        str2optimizer8bit_blockwise[optimizer_name]()[0](
             get_ptr(p),
             get_ptr(g),
             get_ptr(state1),
@@ -875,7 +874,7 @@ def optimizer_update_8bit_blockwise(
             ct.c_int32(g.numel()),
         )
     elif g.dtype == torch.float16 and state1.dtype == torch.uint8:
-        str2optimizer8bit_blockwise[optimizer_name][1](
+        str2optimizer8bit_blockwise[optimizer_name]()[1](
             get_ptr(p),
             get_ptr(g),
             get_ptr(state1),

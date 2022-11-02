@@ -10,12 +10,12 @@ from .autograd._functions import (
     matmul_cublas,
     mm_cublas,
 )
-from .cextension import COMPILED_WITH_CUDA
+# from .cextension import COMPILED_WITH_CUDA
 from .nn import modules
 from . import cuda_setup, utils
 
-if COMPILED_WITH_CUDA:
-    from .optim import adam
+# if COMPILED_WITH_CUDA:
+from .optim import adam
 
 __pdoc__ = {
     "libbitsandbytes": False,
