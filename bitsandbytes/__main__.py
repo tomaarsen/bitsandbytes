@@ -30,7 +30,7 @@ print_header("")
 print()
 
 
-from . import COMPILED_WITH_CUDA, PACKAGE_GITHUB_URL
+from . import PACKAGE_GITHUB_URL
 from .cuda_setup.main import get_compute_capabilities, get_cuda_lib_handle
 from .cuda_setup.env_vars import to_be_ignored
 
@@ -45,7 +45,6 @@ print(
 )
 
 print_header("OTHER")
-print(f"{COMPILED_WITH_CUDA = }")
 cuda = get_cuda_lib_handle()
 print(f"COMPUTE_CAPABILITIES_PER_GPU = {get_compute_capabilities(cuda)}")
 print_header("")
