@@ -10,7 +10,7 @@ import torch
 from typing import Tuple
 from torch import Tensor
 
-from .cextension import lib
+from .cextension import CUDASetup
 from functools import reduce  # Required in Python 3
 
 # math.prod not compatible with python < 3.8
@@ -19,65 +19,67 @@ def prod(iterable):
 
 name2qmap = {}
 
+cuda_setup = CUDASetup.get_instance()
+
 """C FUNCTIONS FOR OPTIMIZERS"""
 str2optimizer32bit = {}
-str2optimizer32bit["adam"] = lambda: (lib.cadam32bit_g32, lib.cadam32bit_g16)
+str2optimizer32bit["adam"] = lambda: (cuda_setup.lib.cadam32bit_g32, cuda_setup.lib.cadam32bit_g16)
 str2optimizer32bit["momentum"] = lambda: (
-    lib.cmomentum32bit_g32,
-    lib.cmomentum32bit_g16,
+    cuda_setup.lib.cmomentum32bit_g32,
+    cuda_setup.lib.cmomentum32bit_g16,
 )
 str2optimizer32bit["rmsprop"] = lambda: (
-    lib.crmsprop32bit_g32,
-    lib.crmsprop32bit_g16,
+    cuda_setup.lib.crmsprop32bit_g32,
+    cuda_setup.lib.crmsprop32bit_g16,
 )
 str2optimizer32bit["adagrad"] = lambda: (
-    lib.cadagrad32bit_g32,
-    lib.cadagrad32bit_g16,
+    cuda_setup.lib.cadagrad32bit_g32,
+    cuda_setup.lib.cadagrad32bit_g16,
 )
 str2optimizer32bit["lars"] = lambda: (
-    lib.cmomentum32bit_g32,
-    lib.cmomentum32bit_g16,
+    cuda_setup.lib.cmomentum32bit_g32,
+    cuda_setup.lib.cmomentum32bit_g16,
 )
-str2optimizer32bit["lamb"] = lambda: (lib.cadam32bit_g32, lib.cadam32bit_g16)
+str2optimizer32bit["lamb"] = lambda: (cuda_setup.lib.cadam32bit_g32, cuda_setup.lib.cadam32bit_g16)
 
 str2optimizer8bit = {}
 str2optimizer8bit["adam"] = lambda: (
-    lib.cadam_static_8bit_g32,
-    lib.cadam_static_8bit_g16,
+    cuda_setup.lib.cadam_static_8bit_g32,
+    cuda_setup.lib.cadam_static_8bit_g16,
 )
 str2optimizer8bit["momentum"] = lambda: (
-    lib.cmomentum_static_8bit_g32,
-    lib.cmomentum_static_8bit_g16,
+    cuda_setup.lib.cmomentum_static_8bit_g32,
+    cuda_setup.lib.cmomentum_static_8bit_g16,
 )
 str2optimizer8bit["rmsprop"] = lambda: (
-    lib.crmsprop_static_8bit_g32,
-    lib.crmsprop_static_8bit_g16,
+    cuda_setup.lib.crmsprop_static_8bit_g32,
+    cuda_setup.lib.crmsprop_static_8bit_g16,
 )
 str2optimizer8bit["lamb"] = lambda: (
-    lib.cadam_static_8bit_g32,
-    lib.cadam_static_8bit_g16,
+    cuda_setup.lib.cadam_static_8bit_g32,
+    cuda_setup.lib.cadam_static_8bit_g16,
 )
 str2optimizer8bit["lars"] = lambda: (
-    lib.cmomentum_static_8bit_g32,
-    lib.cmomentum_static_8bit_g16,
+    cuda_setup.lib.cmomentum_static_8bit_g32,
+    cuda_setup.lib.cmomentum_static_8bit_g16,
 )
 
 str2optimizer8bit_blockwise = {}
 str2optimizer8bit_blockwise["adam"] = lambda: (
-    lib.cadam_8bit_blockwise_fp32,
-    lib.cadam_8bit_blockwise_fp16,
+    cuda_setup.lib.cadam_8bit_blockwise_fp32,
+    cuda_setup.lib.cadam_8bit_blockwise_fp16,
 )
 str2optimizer8bit_blockwise["momentum"] = lambda: (
-    lib.cmomentum_8bit_blockwise_fp32,
-    lib.cmomentum_8bit_blockwise_fp16,
+    cuda_setup.lib.cmomentum_8bit_blockwise_fp32,
+    cuda_setup.lib.cmomentum_8bit_blockwise_fp16,
 )
 str2optimizer8bit_blockwise["rmsprop"] = lambda: (
-    lib.crmsprop_8bit_blockwise_fp32,
-    lib.crmsprop_8bit_blockwise_fp16,
+    cuda_setup.lib.crmsprop_8bit_blockwise_fp32,
+    cuda_setup.lib.crmsprop_8bit_blockwise_fp16,
 )
 str2optimizer8bit_blockwise["adagrad"] = lambda: (
-    lib.cadagrad_8bit_blockwise_fp32,
-    lib.cadagrad_8bit_blockwise_fp16,
+    cuda_setup.lib.cadagrad_8bit_blockwise_fp32,
+    cuda_setup.lib.cadagrad_8bit_blockwise_fp16,
 )
 
 
@@ -92,7 +94,7 @@ class CUBLAS_Context(object):
         # prev_device = torch.cuda.current_device()
         # for i in range(torch.cuda.device_count()):
         #    torch.cuda.set_device(torch.device('cuda', i))
-        #    self.context.append(ct.c_void_p(lib.get_context()))
+        #    self.context.append(ct.c_void_p(cuda_setup.lib.get_context()))
         # torch.cuda.set_device(prev_device)
 
     @classmethod
@@ -106,7 +108,7 @@ class CUBLAS_Context(object):
         if device.index not in self.context:
             prev_device = torch.cuda.current_device()
             torch.cuda.set_device(device)
-            self.context[device.index] = ct.c_void_p(lib.get_context())
+            self.context[device.index] = ct.c_void_p(cuda_setup.lib.get_context())
             torch.cuda.set_device(prev_device)
         return self.context[device.index]
 
@@ -118,7 +120,7 @@ class Cusparse_Context(object):
         raise RuntimeError("Call get_instance() instead")
 
     def initialize(self):
-        self.context = ct.c_void_p(lib.get_cusparse())
+        self.context = ct.c_void_p(cuda_setup.lib.get_cusparse())
 
     @classmethod
     def get_instance(cls):
@@ -356,11 +358,11 @@ def estimate_quantiles(
     if out is None: out = torch.zeros((256,), dtype=torch.float32, device=A.device)
     is_on_gpu([A, out])
     if A.dtype == torch.float32:
-        lib.cestimate_quantiles_fp32(
+        cuda_setup.lib.cestimate_quantiles_fp32(
             get_ptr(A), get_ptr(out), ct.c_float(offset), ct.c_int(A.numel())
         )
     elif A.dtype == torch.float16:
-        lib.cestimate_quantiles_fp16(
+        cuda_setup.lib.cestimate_quantiles_fp16(
             get_ptr(A), get_ptr(out), ct.c_float(offset), ct.c_int(A.numel())
         )
     else:
@@ -419,18 +421,18 @@ def quantize_blockwise(A: Tensor, code: Tensor = None, absmax: Tensor = None, ra
             assert rand.numel() >= 1024
             rand_offset = random.randint(0, 1023)
             if A.dtype == torch.float32:
-                lib.cquantize_blockwise_stochastic_fp32(get_ptr(code), get_ptr(A),get_ptr(absmax), get_ptr(out), get_ptr(rand), ct.c_int32(rand_offset), ct.c_int(A.numel()))
+                cuda_setup.lib.cquantize_blockwise_stochastic_fp32(get_ptr(code), get_ptr(A),get_ptr(absmax), get_ptr(out), get_ptr(rand), ct.c_int32(rand_offset), ct.c_int(A.numel()))
             elif A.dtype == torch.float16:
-                lib.cquantize_blockwise_stochastic_fp16(get_ptr(code), get_ptr(A),get_ptr(absmax), get_ptr(out), get_ptr(rand), ct.c_int32(rand_offset), ct.c_int(A.numel()))
+                cuda_setup.lib.cquantize_blockwise_stochastic_fp16(get_ptr(code), get_ptr(A),get_ptr(absmax), get_ptr(out), get_ptr(rand), ct.c_int32(rand_offset), ct.c_int(A.numel()))
             else:
                 raise ValueError(
                     f"Blockwise quantization only supports 16/32-bit floats, but got {A.dtype}"
                 )
         else:
             if A.dtype == torch.float32:
-                lib.cquantize_blockwise_fp32(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out),ct.c_int(A.numel()))
+                cuda_setup.lib.cquantize_blockwise_fp32(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out),ct.c_int(A.numel()))
             elif A.dtype == torch.float16:
-                lib.cquantize_blockwise_fp16(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out),ct.c_int(A.numel()))
+                cuda_setup.lib.cquantize_blockwise_fp16(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out),ct.c_int(A.numel()))
             else:
                 raise ValueError(
                     f"Blockwise quantization only supports 16/32-bit floats, but got {A.dtype}"
@@ -438,7 +440,7 @@ def quantize_blockwise(A: Tensor, code: Tensor = None, absmax: Tensor = None, ra
     else:
         # cpu
         assert rand is None
-        lib.cquantize_blockwise_cpu_fp32(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out), ct.c_longlong(blocksize), ct.c_longlong(A.numel()))
+        cuda_setup.lib.cquantize_blockwise_cpu_fp32(get_ptr(code), get_ptr(A), get_ptr(absmax), get_ptr(out), ct.c_longlong(blocksize), ct.c_longlong(A.numel()))
 
     return out, (absmax, code)
 
@@ -494,15 +496,15 @@ def dequantize_blockwise(
             raise ValueError(f"The blockwise of {blocksize} is not supported. Supported values: [2048 4096]")
         is_on_gpu([A, out])
         if out.dtype == torch.float32:
-            lib.cdequantize_blockwise_fp32(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_int(blocksize), ct.c_int(A.numel()))
+            cuda_setup.lib.cdequantize_blockwise_fp32(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_int(blocksize), ct.c_int(A.numel()))
         elif out.dtype == torch.float16:
-            lib.cdequantize_blockwise_fp16(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_int(blocksize), ct.c_int(A.numel()))
+            cuda_setup.lib.cdequantize_blockwise_fp16(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_int(blocksize), ct.c_int(A.numel()))
         else:
             raise ValueError(
                 f"Blockwise quantization only supports 16/32-bit floats, but got {A.dtype}"
             )
     else:
-        lib.cdequantize_blockwise_cpu_fp32(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_longlong(blocksize), ct.c_longlong(A.numel()))
+        cuda_setup.lib.cdequantize_blockwise_cpu_fp32(get_ptr(quant_state[1]), get_ptr(A), get_ptr(quant_state[0]), get_ptr(out), ct.c_longlong(blocksize), ct.c_longlong(A.numel()))
 
     return out
 
@@ -563,7 +565,7 @@ def quantize_no_absmax(A: Tensor, code: Tensor, out: Tensor = None) -> Tensor:
     '''
     if out is None: out = torch.zeros_like(A, dtype=torch.uint8)
     is_on_gpu([A, out])
-    lib.cquantize(get_ptr(code), get_ptr(A), get_ptr(out), ct.c_int(A.numel()))
+    cuda_setup.lib.cquantize(get_ptr(code), get_ptr(A), get_ptr(out), ct.c_int(A.numel()))
     return out
 
 
@@ -590,7 +592,7 @@ def dequantize_no_absmax(A: Tensor, code: Tensor, out: Tensor = None) -> Tensor:
     '''
     if out is None: out = torch.zeros_like(A, dtype=torch.float32)
     is_on_gpu([code, A, out])
-    lib.cdequantize(get_ptr(code), get_ptr(A), get_ptr(out), ct.c_int(A.numel()))
+    cuda_setup.lib.cdequantize(get_ptr(code), get_ptr(A), get_ptr(out), ct.c_int(A.numel()))
     return out
 
 
@@ -914,14 +916,14 @@ def percentile_clipping(
     """
     is_on_gpu([grad, gnorm_vec])
     if grad.dtype == torch.float32:
-        lib.cpercentile_clipping_g32(
+        cuda_setup.lib.cpercentile_clipping_g32(
             get_ptr(grad),
             get_ptr(gnorm_vec),
             ct.c_int32(step),
             ct.c_int32(grad.numel()),
         )
     elif grad.dtype == torch.float16:
-        lib.cpercentile_clipping_g16(
+        cuda_setup.lib.cpercentile_clipping_g16(
             get_ptr(grad),
             get_ptr(gnorm_vec),
             ct.c_int32(step),
@@ -958,7 +960,7 @@ def histogram_scatter_add_2d(
     maxdim1 = ct.c_int32(histogram.shape[0])
     n = ct.c_int32(index1.numel())
     is_on_gpu([histogram, index1, index2d, source])
-    lib.chistogram_scatter_add_2d(get_ptr(histogram), get_ptr(index1), get_ptr(index2), get_ptr(source), maxdim1, n)
+    cuda_setup.lib.chistogram_scatter_add_2d(get_ptr(histogram), get_ptr(index1), get_ptr(index2), get_ptr(source), maxdim1, n)
 
 def check_matmul(A, B, out, transposed_A, transposed_B, expected_type=torch.int8):
     if not torch.cuda.is_initialized(): torch.cuda.init()
@@ -1134,7 +1136,7 @@ def igemm(
     # B^T @ A^T = C^T
     # [km, nk -> mn] 
     is_on_gpu([B, A, out])
-    lib.cigemm(ptr, ct.c_bool(transposed_B), ct.c_bool(transposed_A), ct.c_int32(m), ct.c_int32(n), ct.c_int32(k),
+    cuda_setup.lib.cigemm(ptr, ct.c_bool(transposed_B), ct.c_bool(transposed_A), ct.c_int32(m), ct.c_int32(n), ct.c_int32(k),
                get_ptr(B), get_ptr(A), get_ptr(out), ct.c_int32(lda), ct.c_int32(ldb), ct.c_int32(ldc))
     return out
 
@@ -1216,7 +1218,7 @@ def batched_igemm(
     ptr = CUBLAS_Context.get_instance().get_context(A.device)
 
     is_on_gpu([B, A, out])
-    lib.cbatched_igemm(ptr, ct.c_bool(transposed_B), ct.c_bool(transposed_A), ct.c_int32(m), ct.c_int32(n), ct.c_int32(k),
+    cuda_setup.lib.cbatched_igemm(ptr, ct.c_bool(transposed_B), ct.c_bool(transposed_A), ct.c_int32(m), ct.c_int32(n), ct.c_int32(k),
                get_ptr(B), get_ptr(A), get_ptr(out), ct.c_int32(lda), ct.c_int32(ldb), ct.c_int32(ldc),
                ct.c_long(strideA), ct.c_long(strideB), ct.c_long(strideC), ct.c_uint32(num_batch))
     return out
@@ -1293,20 +1295,20 @@ def igemmlt(A, B, SA, SB, out=None, Sout=None, dtype=torch.int32):
     is_on_gpu([A, B, out])
     if formatB == 'col_turing':
         if dtype == torch.int32:
-            has_error = lib.cigemmlt_turing_32(
+            has_error = cuda_setup.lib.cigemmlt_turing_32(
                 ptr, m, n, k, ptrA, ptrB, ptrC, ptrRowScale, lda, ldb, ldc
             )
         else:
-            has_error = lib.cigemmlt_turing_8(
+            has_error = cuda_setup.lib.cigemmlt_turing_8(
                 ptr, m, n, k, ptrA, ptrB, ptrC, ptrRowScale, lda, ldb, ldc
             )
     elif formatB == "col_ampere":
         if dtype == torch.int32:
-            has_error = lib.cigemmlt_ampere_32(
+            has_error = cuda_setup.lib.cigemmlt_ampere_32(
                 ptr, m, n, k, ptrA, ptrB, ptrC, ptrRowScale, lda, ldb, ldc
             )
         else:
-            has_error = lib.cigemmlt_ampere_8(
+            has_error = cuda_setup.lib.cigemmlt_ampere_8(
                 ptr, m, n, k, ptrA, ptrB, ptrC, ptrRowScale, lda, ldb, ldc
             )
 
@@ -1364,7 +1366,7 @@ def mm_dequant(
     numCols = ct.c_int32(out_shape[1])
 
     is_on_gpu([A, row_stats, col_stats, out, new_row_stats, new_col_stats, bias])
-    lib.cdequant_mm_int32_fp16(ptrA, ptrRowStats, ptrColStats, ptrOut, ptrNewRowStats, ptrNewColStats, ptrBias, numRows, numCols)
+    cuda_setup.lib.cdequant_mm_int32_fp16(ptrA, ptrRowStats, ptrColStats, ptrOut, ptrNewRowStats, ptrNewColStats, ptrBias, numRows, numCols)
     post_call(prev_device)
 
     return out
@@ -1407,7 +1409,7 @@ def get_colrow_absmax(
 
     prev_device = pre_call(A.device)
     is_on_gpu([A, row_stats, col_stats, nnz_block_ptr])
-    lib.cget_col_row_stats(ptrA, ptrRowStats, ptrColStats, ptrNnzrows, ct.c_float(threshold), rows, cols)
+    cuda_setup.lib.cget_col_row_stats(ptrA, ptrRowStats, ptrColStats, ptrNnzrows, ct.c_float(threshold), rows, cols)
     post_call(prev_device)
 
     if threshold > 0.0:
@@ -1546,7 +1548,7 @@ def double_quant(
             ptrVal = get_ptr(coo_tensor.values)
             ptrRowPtr = get_ptr(nnz_row_ptr)
 
-            lib.cdouble_rowcol_quant(
+            cuda_setup.lib.cdouble_rowcol_quant(
                 ptrA,
                 ptrRowStats,
                 ptrColStats,
@@ -1565,7 +1567,7 @@ def double_quant(
             coo_tensor.colidx = coo_tensor.colidx[idx]
             coo_tensor.values = coo_tensor.values[idx]
         else:
-            lib.cdouble_rowcol_quant(
+            cuda_setup.lib.cdouble_rowcol_quant(
                 ptrA,
                 ptrRowStats,
                 ptrColStats,
@@ -1580,7 +1582,7 @@ def double_quant(
                 ct.c_int32(cols),
             )
     else:
-        lib.cdouble_rowcol_quant(
+        cuda_setup.lib.cdouble_rowcol_quant(
             ptrA,
             ptrRowStats,
             ptrColStats,
@@ -1619,24 +1621,24 @@ def transform(A, to_order, from_order='row', out=None, transpose=False, state=No
     is_on_gpu([A, out])
     if to_order == 'col32':
         if transpose:
-            lib.ctransform_row2col32T(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2col32T(get_ptr(A), get_ptr(out), dim1, dim2)
         else:
-            lib.ctransform_row2col32(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2col32(get_ptr(A), get_ptr(out), dim1, dim2)
     elif to_order == "col_turing":
         if transpose:
-            lib.ctransform_row2turingT(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2turingT(get_ptr(A), get_ptr(out), dim1, dim2)
         else:
-            lib.ctransform_row2turing(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2turing(get_ptr(A), get_ptr(out), dim1, dim2)
     elif to_order == "col_ampere":
         if transpose:
-            lib.ctransform_row2ampereT(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2ampereT(get_ptr(A), get_ptr(out), dim1, dim2)
         else:
-            lib.ctransform_row2ampere(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_row2ampere(get_ptr(A), get_ptr(out), dim1, dim2)
     elif to_order == "row":
         if from_order == "col_turing":
-            lib.ctransform_turing2row(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_turing2row(get_ptr(A), get_ptr(out), dim1, dim2)
         elif from_order == "col_ampere":
-            lib.ctransform_ampere2row(get_ptr(A), get_ptr(out), dim1, dim2)
+            cuda_setup.lib.ctransform_ampere2row(get_ptr(A), get_ptr(out), dim1, dim2)
     else:
         raise NotImplementedError(f'Transform function not implemented: From {from_order} to {to_order}')
 
@@ -1676,7 +1678,7 @@ def spmm_coo(cooA, B, out=None):
     cldc = ct.c_int32(ldc)
 
     is_on_gpu([cooA.rowidx, cooA.colidx, cooA.values, B, out])
-    lib.cspmm_coo(ptr, ptrRowidx, ptrColidx, ptrValues, cnnz, crowsA, ccolsA, ccolsB, cldb, ptrB, cldc, ptrC, ct.c_bool(transposed_B))
+    cuda_setup.lib.cspmm_coo(ptr, ptrRowidx, ptrColidx, ptrValues, cnnz, crowsA, ccolsA, ccolsB, cldb, ptrB, cldc, ptrC, ct.c_bool(transposed_B))
 
     return out
 
@@ -1729,7 +1731,7 @@ def spmm_coo_very_sparse(cooA, B, dequant_stats=None, out=None):
 
     is_on_gpu([cooA.rowidx, cooA.colidx, cooA.values, B, out, dequant_stats])
     if B.dtype == torch.float16:
-        lib.cspmm_coo_very_sparse_naive_fp16(
+        cuda_setup.lib.cspmm_coo_very_sparse_naive_fp16(
             ptrMaxCount,
             ptrMaxIdx,
             ptrOffset,
@@ -1746,7 +1748,7 @@ def spmm_coo_very_sparse(cooA, B, dequant_stats=None, out=None):
             ccolsB,
         )
     elif B.dtype == torch.int8:
-        lib.cspmm_coo_very_sparse_naive_int8(
+        cuda_setup.lib.cspmm_coo_very_sparse_naive_int8(
             ptrMaxCount,
             ptrMaxIdx,
             ptrOffset,
@@ -1916,9 +1918,9 @@ def extract_outliers(A, SA, idx):
 
     prev_device = pre_call(A.device)
     if formatA == 'col_turing':
-        lib.cextractOutliers_turing(ptrA, ptrIdx, ptrOut, idx_size, rows, cols)
+        cuda_setup.lib.cextractOutliers_turing(ptrA, ptrIdx, ptrOut, idx_size, rows, cols)
     elif formatA == "col_ampere":
-        lib.cextractOutliers_ampere(ptrA, ptrIdx, ptrOut, idx_size, rows, cols)
+        cuda_setup.lib.cextractOutliers_ampere(ptrA, ptrIdx, ptrOut, idx_size, rows, cols)
     post_call(prev_device)
 
     return out

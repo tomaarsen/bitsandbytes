@@ -12,31 +12,12 @@ class CUDASetup(object):
         raise RuntimeError("Call get_instance() instead")
 
     @property
-    @classmethod
-    def lib(cls):
-        if cls._instance is not None:
-            return cls._instance.lib
+    def lib(self):
+        if self._lib is not None:
+            return self._lib
+        self.initialize()
+        return self._lib
 
-        return cls.get_instance().lib
-        """
-        lib = cls.get_instance().lib
-        try:
-            if lib is None and torch.cuda.is_available():
-                CUDASetup.get_instance().generate_instructions()
-                CUDASetup.get_instance().print_log_stack()
-                raise RuntimeError('''
-                CUDA Setup failed despite GPU being available. Inspect the CUDA SETUP outputs aboveto fix your environment!
-                If you cannot find any issues and suspect a bug, please open an issue with detals about your environment:
-                https://github.com/TimDettmers/bitsandbytes/issues''')
-            lib.cadam32bit_g32
-            lib.get_context.restype = ct.c_void_p
-            lib.get_cusparse.restype = ct.c_void_p
-            COMPILED_WITH_CUDA = True
-        except AttributeError:
-            warn("The installed version of bitsandbytes was compiled without GPU support. "
-                "8-bit optimizers and GPU quantization are unavailable.")
-            COMPILED_WITH_CUDA = False
-        """
 
     def generate_instructions(self):
         if self.cuda is None:
@@ -79,9 +60,6 @@ class CUDASetup(object):
         self.add_log_entry('python setup.py install')
 
     def initialize(self):
-        self.cuda_setup_log = []
-        self.lib = None
-
         from .cuda_setup.main import evaluate_cuda_setup
         binary_name, cudart_path, cuda, cc, cuda_version_string = evaluate_cuda_setup()
         self.cudart_path = cudart_path
@@ -112,10 +90,13 @@ class CUDASetup(object):
                     self.generate_instructions()
                     self.print_log_stack()
                     raise Exception('CUDA SETUP: Setup Failed!')
-                self.lib = ct.cdll.LoadLibrary(binary_path)
+                self._lib = ct.cdll.LoadLibrary(binary_path)
             else:
                 self.add_log_entry(f"CUDA SETUP: Loading binary {binary_path}...")
-                self.lib = ct.cdll.LoadLibrary(binary_path)
+                self._lib = ct.cdll.LoadLibrary(binary_path)
+            self._lib.cadam32bit_g32
+            self._lib.get_context.restype = ct.c_void_p
+            self._lib.get_cusparse.restype = ct.c_void_p
         except:
             self.print_log_stack()
 
@@ -133,8 +114,23 @@ class CUDASetup(object):
     def get_instance(cls):
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
-            cls._instance.initialize()
+            cls._instance.cuda_setup_log = []
+            cls._instance._lib = None
+            # cls._instance.initialize()
         return cls._instance
 
 
-lib = CUDASetup.lib
+# lib = CUDASetup.get_instance().lib
+# try:
+#     if lib is None and torch.cuda.is_available():
+#         CUDASetup.get_instance().generate_instructions()
+#         CUDASetup.get_instance().print_log_stack()
+#         raise RuntimeError('''
+#         CUDA Setup failed despite GPU being available. Inspect the CUDA SETUP outputs aboveto fix your environment!
+#         If you cannot find any issues and suspect a bug, please open an issue with detals about your environment:
+#         https://github.com/TimDettmers/bitsandbytes/issues''')
+#     COMPILED_WITH_CUDA = True
+# except AttributeError:
+#     warn("The installed version of bitsandbytes was compiled without GPU support. "
+#         "8-bit optimizers and GPU quantization are unavailable.")
+#     COMPILED_WITH_CUDA = False
