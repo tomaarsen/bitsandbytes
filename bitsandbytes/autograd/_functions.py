@@ -4,7 +4,7 @@ import warnings
 import torch
 import bitsandbytes.functional as F
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import reduce  # Required in Python 3
 
 # math.prod not compatible with python < 3.8
@@ -188,7 +188,7 @@ class MatmulLtState:
     has_fp16_weights = True
     memory_efficient_backward = False
     use_pool = False
-    formatB = F.get_special_format_str()
+    formatB: str = field(default_factory=F.get_special_format_str)
 
     def reset_grads(self):
         self.CB = None
@@ -203,7 +203,11 @@ class MatmulLtState:
 
 class MatMul8bitLt(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, A, B, out=None, bias=None, state=MatmulLtState()):
+    def forward(ctx, A, B, out=None, bias=None, state=None):
+        # Note: Unlike before, the default `state` no longer carries over between
+        # different calls to the forward method, but it's initialized anew every time.
+        if state is None:
+            state = MatmulLtState()
         # default to pytorch behavior if inputs are empty
         ctx.is_empty = False
         if prod(A.shape) == 0:
